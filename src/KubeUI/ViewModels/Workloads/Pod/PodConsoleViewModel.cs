@@ -39,9 +39,6 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
     public partial TextDocument Console { get; set; } = new();
 
     [ObservableProperty]
-    public partial RichTextModel ConsoleColor { get; set; } = new();
-
-    [ObservableProperty]
     public partial Terminal Terminal { get; set; } = new();
 
     [ObservableProperty]
@@ -49,9 +46,6 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     [ObservableProperty]
     public partial double Height { get; set; }
-
-    [ObservableProperty]
-    public partial int BufferLength { get; set; }
 
     [ObservableProperty]
     public partial string FontFamily { get; set; } = "Cascadia Mono";
@@ -113,21 +107,15 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public void Resize(double width, double height)
+    public void Resize()
     {
-        Width = width;
-        Height = height;
         if (Width > 0 && Height > 0)
         {
             var size = CalculateTextSize("a", FontFamily, Convert.ToDouble(_settingsService.Settings.ConsoleFontSize));
-            var cols = (int)((width) / size.Width);
-            var rows = (int)((height) / (size.Height * 1.17));
-            if (Terminal.Cols != cols || Terminal.Rows != rows)
-            {
-                Terminal.Resize(cols, rows);
-                SendResize();
-                BufferLength = rows + Terminal.Options.Scrollback ?? 0;
-            }
+            var cols = (int)((Width) / size.Width);
+            var rows = (int)((Height) / (size.Height * 1.17));
+            Terminal.Resize(cols, rows);
+            SendResize();
         }
     }
 
@@ -141,7 +129,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
         return run.Size;
     }
 
-    public void SendResize()
+    private void SendResize()
     {
         var size = new TerminalSize
         {
@@ -149,7 +137,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
             Height = (ushort)Terminal.Rows,
         };
 
-        if (_refreshStream?.CanWrite == true)
+        if (_refreshStream?.CanWrite == true && _webSocket.State == WebSocketState.Open)
         {
             try
             {
@@ -179,9 +167,11 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
         _stream = _streamDemuxer.GetStream(ChannelIndex.StdOut, ChannelIndex.StdIn);
         _refreshStream = _streamDemuxer.GetStream(null, ChannelIndex.Resize);
 
+        Resize();
+
         _ = Task.Run(async () =>
         {
-            while (_stream.CanRead)
+            while (_stream.CanRead && _webSocket.State == WebSocketState.Open)
             {
                 try
                 {
@@ -201,7 +191,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     public void Send(string text)
     {
-        if (_stream?.CanWrite == true)
+        if (_stream?.CanWrite == true && _webSocket?.State == WebSocketState.Open)
         {
             try
             {
@@ -219,7 +209,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     public void Send(byte bytes)
     {
-        if (_stream?.CanWrite == true)
+        if (_stream?.CanWrite == true && _webSocket?.State == WebSocketState.Open)
         {
             try
             {
@@ -234,7 +224,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     public void Send(byte[] bytes)
     {
-        if (_stream?.CanWrite == true)
+        if (_stream?.CanWrite == true && _webSocket?.State == WebSocketState.Open)
         {
             try
             {
@@ -250,7 +240,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     public async Task Paste()
     {
-        if (_stream?.CanWrite == true)
+        if (_stream?.CanWrite == true && _webSocket?.State == WebSocketState.Open)
         {
             try
             {
@@ -272,6 +262,7 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     public void Dispose()
     {
+        _webSocket?.Abort();
         _webSocket?.Dispose();
         _streamDemuxer?.Dispose();
         _stream?.Dispose();
@@ -280,32 +271,24 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
 
     private void FullTextUpdate()
     {
-        var result = "";
-        var lineText = "";
+        var result = new StringBuilder();
         for (var line = Terminal.Buffer.YBase; line < Terminal.Buffer.YBase + Terminal.Rows; line++)
         {
-            lineText = "";
+            var lineText = new StringBuilder(Terminal.Cols);
             for (var cell = 0; cell < Terminal.Cols; cell++)
             {
                 var cd = Terminal.Buffer.Lines[line][cell];
-
-                if (cd.Code == 0)
-                    lineText += " ";
-                else
-                    lineText += (char)cd.Rune;
+                lineText.Append(cd.Code == 0 ? ' ' : (char)cd.Rune);
             }
-
-            result += lineText;
-
-            // All except last line
+            result.Append(lineText);
             if (line < Terminal.Buffer.YBase + Terminal.Rows - 1)
             {
-                result += '\n';
+                result.Append('\n');
             }
         }
         Dispatcher.UIThread.Post(() =>
         {
-            Console.Text = result;
+            Console.Text = result.ToString();
         }, DispatcherPriority.Input);
     }
 }

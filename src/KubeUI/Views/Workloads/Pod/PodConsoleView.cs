@@ -360,7 +360,6 @@ public sealed class PodConsoleView : MyViewBase<PodConsoleViewModel>
         try
         {
             ViewModel.Connect().GetAwaiter();
-            ViewModel?.Resize(_textEditor.Bounds.Width, _textEditor.Bounds.Height);
         }
         catch (Exception ex)
         {
@@ -372,6 +371,11 @@ public sealed class PodConsoleView : MyViewBase<PodConsoleViewModel>
     {
         base.OnSizeChanged(e);
 
-        ViewModel?.Resize(_textEditor.Bounds.Width, _textEditor.Bounds.Height);
+        if (ViewModel != null && _textEditor != null)
+        {
+            ViewModel.Width = _textEditor.Bounds.Width;
+            ViewModel.Height = _textEditor.Bounds.Height;
+            ViewModel.Resize();
+        }
     }
 }
