@@ -272,24 +272,26 @@ public sealed partial class PodConsoleViewModel : ViewModelBase, IDisposable
     private void FullTextUpdate()
     {
         var result = new StringBuilder();
+
         for (var line = Terminal.Buffer.YBase; line < Terminal.Buffer.YBase + Terminal.Rows; line++)
         {
-            var lineText = new StringBuilder(Terminal.Cols);
+            var lineText = new StringBuilder();
+
             for (var cell = 0; cell < Terminal.Cols; cell++)
             {
                 var cd = Terminal.Buffer.Lines[line][cell];
                 lineText.Append(cd.Code == 0 ? ' ' : (char)cd.Rune);
             }
+
             result.Append(lineText);
+
             if (line < Terminal.Buffer.YBase + Terminal.Rows - 1)
             {
                 result.Append('\n');
             }
         }
-        Dispatcher.UIThread.Post(() =>
-        {
-            Console.Text = result.ToString();
-        }, DispatcherPriority.Input);
+
+        Dispatcher.UIThread.Post(() => Console.Text = result.ToString(), DispatcherPriority.Input);
     }
 }
 
